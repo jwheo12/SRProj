@@ -64,15 +64,41 @@ def get_train_transform():
     )
 
 
+def get_val_transform():
+    patch_size = CFG["TRAIN_PATCH_SIZE"]
+    return A.Compose(
+        [A.CenterCrop(height=patch_size, width=patch_size), ToTensorV2(p=1.0)],
+        additional_targets={"label": "image"},
+    )
+
+
 def get_test_transform():
     return A.Compose([ToTensorV2(p=1.0)])
 
 
-def create_dataloaders(train_df, test_df, batch_size, test_batch_size=2, num_workers=6):
+def create_dataloaders(
+    train_df,
+    val_df,
+    test_df,
+    batch_size,
+    val_batch_size=2,
+    test_batch_size=2,
+    num_workers=6,
+):
     train_dataset = CustomDataset(train_df, get_train_transform(), True)
     train_loader = DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
     )
+
+    val_loader = None
+    if val_df is not None and len(val_df) > 0:
+        val_dataset = CustomDataset(val_df, get_val_transform(), True)
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=val_batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+        )
 
     test_dataset = CustomDataset(test_df, get_test_transform(), False)
     test_loader = DataLoader(
@@ -82,4 +108,4 @@ def create_dataloaders(train_df, test_df, batch_size, test_batch_size=2, num_wor
         num_workers=num_workers,
     )
 
-    return train_loader, test_loader
+    return train_loader, val_loader, test_loader

@@ -97,6 +97,23 @@ def save_submission(pred_name_list, pred_img_list, output_dir="./submission", zi
     return zip_path
 
 
+def split_train_val(df, val_ratio, seed):
+    if val_ratio <= 0.0:
+        return df.reset_index(drop=True), None
+
+    num_rows = len(df)
+    val_size = max(1, int(num_rows * val_ratio))
+    rng = np.random.default_rng(seed)
+    indices = np.arange(num_rows)
+    rng.shuffle(indices)
+
+    val_idx = indices[:val_size]
+    train_idx = indices[val_size:]
+    train_df = df.iloc[train_idx].reset_index(drop=True)
+    val_df = df.iloc[val_idx].reset_index(drop=True)
+    return train_df, val_df
+
+
 def main():
     seed_everything(CFG["SEED"])
     wandb, wandb_run = init_wandb(CFG)
@@ -109,13 +126,21 @@ def main():
         )
 
     try:
-        train_df = pd.read_csv("./train.csv")
+        full_train_df = pd.read_csv("./train.csv")
         test_df = pd.read_csv("./test.csv")
+        train_df, val_df = split_train_val(
+            df=full_train_df,
+            val_ratio=CFG["VAL_RATIO"],
+            seed=CFG["SEED"],
+        )
+        print(f"Train samples: {len(train_df)} | Val samples: {0 if val_df is None else len(val_df)}")
 
-        train_loader, test_loader = create_dataloaders(
+        train_loader, val_loader, test_loader = create_dataloaders(
             train_df=train_df,
+            val_df=val_df,
             test_df=test_df,
             batch_size=CFG["BATCH_SIZE"],
+            val_batch_size=CFG["VAL_BATCH_SIZE"],
             test_batch_size=CFG["TEST_BATCH_SIZE"],
             num_workers=6,
         )
@@ -132,6 +157,7 @@ def main():
             model=model,
             optimizer=optimizer,
             train_loader=train_loader,
+            val_loader=val_loader,
             scheduler=scheduler,
             device=DEVICE,
             epochs=CFG["EPOCHS"],
@@ -139,6 +165,9 @@ def main():
             image_log_fn=train_image_logger,
             image_log_every=CFG["WANDB_TRAIN_IMAGE_EVERY_N_EPOCHS"],
             num_image_samples=CFG["WANDB_MAX_LOG_IMAGES"],
+            val_every=CFG["VAL_EVERY_N_EPOCHS"],
+            val_tile_size=CFG["VAL_TILE_SIZE"],
+            val_tile_overlap=CFG["VAL_TILE_OVERLAP"],
         )
 
         pred_img_list, pred_name_list = inference(
